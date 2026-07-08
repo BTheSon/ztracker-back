@@ -1,8 +1,4 @@
-interface BaseResponse<T> {
-    msg: string;
-    data: T;
-}
-
-interface ErrorResponse {
-    msg: string;
+interface BaseResponse<T = any> {
+    msg?: string;
+    data?: T;
 }

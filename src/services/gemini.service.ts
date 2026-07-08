@@ -13,11 +13,15 @@ Chỉ trả JSON, đúng schema:
 {"don_hang":{"so_dien_thoai":"","dia_chi_goc":"","dia_chi_day_du":"","ghi_chu_don_hang":"","do_tin_cay_dia_chi":"cao|trung_binh|thap"},"noi_dung_khac":""}`;
 
 // Prompt riêng cho input dạng text (đơn hàng dạng chữ, không phải ảnh)
-const EXTRACTION_PROMPT_TEXT = `Trích SĐT, địa chỉ, tên người nhận, nội dung đặt hàng từ đoạn text đơn hàng (VN). Text chỉ chứa 1 đơn hàng.
+// Prompt riêng cho input dạng text (đơn hàng dạng chữ, không phải ảnh)
+const EXTRACTION_PROMPT_TEXT = `Trích SĐT, địa chỉ, tên người nhận, nội dung đặt hàng từ đoạn text (VN).
+Trước tiên xác định text có phải nội dung đặt hàng không (có món/số lượng/size, hoặc SĐT/địa chỉ liên quan giao hàng...). 
+Nếu KHÔNG phải đơn hàng (tin nhắn hỏi han, chat linh tinh, quảng cáo, spam...) -> đặt "la_don_hang": false, để trống các trường còn lại trong don_hang, và mô tả ngắn gọn nội dung vào noi_dung_khac.
+Nếu LÀ đơn hàng -> đặt "la_don_hang": true, xử lý như bình thường: text chỉ chứa 1 đơn hàng.
 Địa chỉ viết tắt -> suy ra đầy đủ theo khu vực; nếu khớp ≥2 đường, chọn đường lớn/phổ biến hơn. Giữ nguyên số nhà/ký hiệu. Không chắc -> giữ bản gốc, đánh dấu độ tin cậy thấp.
 Không có SĐT/địa chỉ -> mô tả nội dung vào noi_dung_khac.
 Chỉ trả JSON, đúng schema:
-{"don_hang":{"so_dien_thoai":"","dia_chi_goc":"","dia_chi_day_du":"","ghi_chu_don_hang":"","do_tin_cay_dia_chi":"cao|trung_binh|thap"},"noi_dung_khac":""}`;
+{"la_don_hang":true,"don_hang":{"so_dien_thoai":"","dia_chi_goc":"","dia_chi_day_du":"","ten_nguoi_nhan":"","ghi_chu_don_hang":"","do_tin_cay_dia_chi":"cao|trung_binh|thap"},"noi_dung_khac":""}`;
 
 export interface DonHang {
     so_dien_thoai: string;
@@ -28,6 +32,7 @@ export interface DonHang {
 }
 
 export interface ExtractResult {
+    la_don_hang?: boolean; // false nếu text không phải nội dung đặt hàng
     don_hang: DonHang;
     noi_dung_khac?: string;
     rawText?: string; // fallback nếu parse JSON lỗi
@@ -46,15 +51,22 @@ const emptyDonHang: DonHang = {
 const parseExtractionResponse = (responseText: string): ExtractResult => {
     try {
         const parsed = JSON.parse(responseText);
+        const laDonHang = parsed.la_don_hang !== false;
+
         const extractedData: ExtractResult = {
-            don_hang: parsed.don_hang ? { ...emptyDonHang, ...parsed.don_hang } : emptyDonHang,
+            la_don_hang: laDonHang,
+            don_hang: laDonHang && parsed.don_hang ? { ...emptyDonHang, ...parsed.don_hang } : emptyDonHang,
             noi_dung_khac: parsed.noi_dung_khac || undefined
         };
-        extractedData.don_hang.so_dien_thoai = normalizePhone(extractedData.don_hang.so_dien_thoai);
+
+        if (laDonHang) {
+            extractedData.don_hang.so_dien_thoai = normalizePhone(extractedData.don_hang.so_dien_thoai);
+        }
+
         return extractedData;
     } catch (error) {
         console.error("Lỗi parse JSON từ kết quả Gemini:", responseText);
-        return { don_hang: emptyDonHang, rawText: responseText };
+        return { la_don_hang: false, don_hang: emptyDonHang, rawText: responseText };
     }
 };
 
@@ -95,7 +107,7 @@ export const processImageAndExtractInfo = async (url: string): Promise<ExtractRe
 export const processTextAndExtractInfo = async (text: string): Promise<ExtractResult> => {
     try {
         if (!text || !text.trim()) {
-            return { don_hang: emptyDonHang, noi_dung_khac: '' };
+            return { la_don_hang: false, don_hang: emptyDonHang, noi_dung_khac: '' };
         }
 
         const model = genAI.getGenerativeModel({
@@ -106,7 +118,8 @@ export const processTextAndExtractInfo = async (text: string): Promise<ExtractRe
         });
 
         const prompt = `${EXTRACTION_PROMPT_TEXT}
-Text đơn hàng:
+
+Text đầu vào:
 """
 ${text}
 """`;
@@ -114,7 +127,13 @@ ${text}
         const result = await model.generateContent(prompt);
         const responseText = result.response.text();
 
-        return parseExtractionResponse(responseText);
+        const extracted = parseExtractionResponse(responseText);
+
+        if (!extracted.la_don_hang) {
+            console.log("Text không phải đơn hàng, bỏ qua xử lý:", text);
+        }
+
+        return extracted;
     } catch (error) {
         console.error("Lỗi trong quá trình gọi dịch vụ Gemini (text):", error);
         throw error;
