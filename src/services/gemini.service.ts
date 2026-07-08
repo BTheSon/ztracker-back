@@ -1,0 +1,122 @@
+import { GoogleGenerativeAI, Part } from '@google/generative-ai';
+import { config } from '../config';
+import { normalizePhone } from '../utils/mormalize_phone';
+
+// Khởi tạo Gemini client với API Key từ biến môi trường
+const genAI = new GoogleGenerativeAI(config.geminiApiKey);
+
+// Prompt tối ưu token: ngắn gọn, xử lý 1 ảnh = 1 đơn hàng
+const EXTRACTION_PROMPT_PHOTO = `Trích SĐT, địa chỉ, tên người nhận, nội dung đặt hàng từ ảnh (VN). Ảnh chỉ chứa 1 đơn hàng.
+Địa chỉ viết tắt -> suy ra đầy đủ theo khu vực; nếu khớp ≥2 đường, chọn đường lớn/phổ biến hơn. Giữ nguyên số nhà/ký hiệu. Không chắc -> giữ bản gốc, đánh dấu độ tin cậy thấp.
+Không có SĐT/địa chỉ -> mô tả ảnh vào noi_dung_khac.
+Chỉ trả JSON, đúng schema:
+{"don_hang":{"so_dien_thoai":"","dia_chi_goc":"","dia_chi_day_du":"","ghi_chu_don_hang":"","do_tin_cay_dia_chi":"cao|trung_binh|thap"},"noi_dung_khac":""}`;
+
+// Prompt riêng cho input dạng text (đơn hàng dạng chữ, không phải ảnh)
+const EXTRACTION_PROMPT_TEXT = `Trích SĐT, địa chỉ, tên người nhận, nội dung đặt hàng từ đoạn text đơn hàng (VN). Text chỉ chứa 1 đơn hàng.
+Địa chỉ viết tắt -> suy ra đầy đủ theo khu vực; nếu khớp ≥2 đường, chọn đường lớn/phổ biến hơn. Giữ nguyên số nhà/ký hiệu. Không chắc -> giữ bản gốc, đánh dấu độ tin cậy thấp.
+Không có SĐT/địa chỉ -> mô tả nội dung vào noi_dung_khac.
+Chỉ trả JSON, đúng schema:
+{"don_hang":{"so_dien_thoai":"","dia_chi_goc":"","dia_chi_day_du":"","ghi_chu_don_hang":"","do_tin_cay_dia_chi":"cao|trung_binh|thap"},"noi_dung_khac":""}`;
+
+export interface DonHang {
+    so_dien_thoai: string;
+    dia_chi_goc: string;
+    dia_chi_day_du: string;
+    ghi_chu_don_hang: string;
+    do_tin_cay_dia_chi: 'cao' | 'trung_binh' | 'thap';
+}
+
+export interface ExtractResult {
+    don_hang: DonHang;
+    noi_dung_khac?: string;
+    rawText?: string; // fallback nếu parse JSON lỗi
+}
+
+const emptyDonHang: DonHang = {
+    so_dien_thoai: '',
+    dia_chi_goc: '',
+    dia_chi_day_du: '',
+    ghi_chu_don_hang: '',
+    do_tin_cay_dia_chi: 'thap'
+};
+
+
+// Hàm dùng chung để parse response JSON từ Gemini (dùng cho cả ảnh và text)
+const parseExtractionResponse = (responseText: string): ExtractResult => {
+    try {
+        const parsed = JSON.parse(responseText);
+        const extractedData: ExtractResult = {
+            don_hang: parsed.don_hang ? { ...emptyDonHang, ...parsed.don_hang } : emptyDonHang,
+            noi_dung_khac: parsed.noi_dung_khac || undefined
+        };
+        extractedData.don_hang.so_dien_thoai = normalizePhone(extractedData.don_hang.so_dien_thoai);
+        return extractedData;
+    } catch (error) {
+        console.error("Lỗi parse JSON từ kết quả Gemini:", responseText);
+        return { don_hang: emptyDonHang, rawText: responseText };
+    }
+};
+
+export const processImageAndExtractInfo = async (url: string): Promise<ExtractResult> => {
+    try {
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`Failed to load image from URL: ${response.statusText}`);
+        }
+        const arrayBuffer = await response.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        const mimeType = response.headers.get('content-type') || 'image/jpeg';
+
+        const model = genAI.getGenerativeModel({
+            model: "gemini-2.5-flash",
+            generationConfig: {
+                responseMimeType: "application/json"
+            }
+        });
+
+        const imagePart: Part = {
+            inlineData: {
+                data: buffer.toString("base64"),
+                mimeType
+            }
+        };
+
+        const result = await model.generateContent([EXTRACTION_PROMPT_PHOTO, imagePart]);
+        const responseText = result.response.text();
+
+        return parseExtractionResponse(responseText);
+    } catch (error) {
+        console.error("Lỗi trong quá trình gọi dịch vụ Gemini:", error);
+        throw error;
+    }
+};
+
+export const processTextAndExtractInfo = async (text: string): Promise<ExtractResult> => {
+    try {
+        if (!text || !text.trim()) {
+            return { don_hang: emptyDonHang, noi_dung_khac: '' };
+        }
+
+        const model = genAI.getGenerativeModel({
+            model: "gemini-2.5-flash",
+            generationConfig: {
+                responseMimeType: "application/json"
+            }
+        });
+
+        const prompt = `${EXTRACTION_PROMPT_TEXT}
+Text đơn hàng:
+"""
+${text}
+"""`;
+
+        const result = await model.generateContent(prompt);
+        const responseText = result.response.text();
+
+        return parseExtractionResponse(responseText);
+    } catch (error) {
+        console.error("Lỗi trong quá trình gọi dịch vụ Gemini (text):", error);
+        throw error;
+    }
+};

@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { processImageAndExtractInfo } from "../services/gemini.service";
 
 export const newMsg = async (req: Request, res: Response) => {
     try {
@@ -9,22 +10,22 @@ export const newMsg = async (req: Request, res: Response) => {
             title = null 
         } = req.body;
 
-        let imageBuffer: Buffer | null = null;
+        let extractedInfo = null;
 
-        // Xử lý nếu type là photo
+        // Xử lý nếu type là photo, tách riêng logic nghiệp vụ vào service
         if (type === "photo" && url) {
-            // Dùng fetch (có sẵn trong Node 18+) để lấy dữ liệu thay vì cài thêm thư viện
-            const response = await fetch(url);
-            if (!response.ok) {
-                throw new Error(`Failed to load image from URL: ${response.statusText}`);
-            }
-            const arrayBuffer = await response.arrayBuffer();
-            imageBuffer = Buffer.from(arrayBuffer); // Đối tượng ảnh dưới dạng Buffer
+            extractedInfo = await processImageAndExtractInfo(url);
         }
 
         res.json({
             success: true,
-            data: { type, text, url, title, hasImage: !!imageBuffer }
+            data: { 
+                type, 
+                text, 
+                url, 
+                title, 
+                geminiExtraction: extractedInfo 
+            }
         });
     } catch (error: any) {
         res.status(500).json({
