@@ -6,7 +6,7 @@ import { normalizePhone } from '../utils/mormalize_phone';
 const genAI = new GoogleGenerativeAI(config.geminiApiKey);
 
 // Prompt tối ưu token: ngắn gọn, xử lý 1 ảnh = 1 đơn hàng
-const EXTRACTION_PROMPT_PHOTO = `Trích SĐT, địa chỉ, tên người nhận, nội dung đặt hàng từ ảnh (VN). Ảnh chỉ chứa 1 đơn hàng.
+const EXTRACTION_PROMPT_PHOTO = `Trích SĐT, địa chỉ, tên người nhận, nội dung đặt hàng từ ảnh (VN/binhdinh/quynhon). Ảnh chỉ chứa 1 đơn hàng.
 Địa chỉ viết tắt -> suy ra đầy đủ theo khu vực; nếu khớp ≥2 đường, chọn đường lớn/phổ biến hơn. Giữ nguyên số nhà/ký hiệu. Không chắc -> giữ bản gốc, đánh dấu độ tin cậy thấp.
 Không có SĐT/địa chỉ -> mô tả ảnh vào noi_dung_khac.
 Chỉ trả JSON, đúng schema:
@@ -14,7 +14,7 @@ Chỉ trả JSON, đúng schema:
 
 // Prompt riêng cho input dạng text (đơn hàng dạng chữ, không phải ảnh)
 // Prompt riêng cho input dạng text (đơn hàng dạng chữ, không phải ảnh)
-const EXTRACTION_PROMPT_TEXT = `Trích SĐT, địa chỉ, tên người nhận, nội dung đặt hàng từ đoạn text (VN).
+const EXTRACTION_PROMPT_TEXT = `Trích SĐT, địa chỉ, tên người nhận, nội dung đặt hàng từ đoạn text (VN/binhdinh/quynhon).
 Trước tiên xác định text có phải nội dung đặt hàng không (có món/số lượng/size, hoặc SĐT/địa chỉ liên quan giao hàng...). 
 Nếu KHÔNG phải đơn hàng (tin nhắn hỏi han, chat linh tinh, quảng cáo, spam...) -> đặt "la_don_hang": false, để trống các trường còn lại trong don_hang, và mô tả ngắn gọn nội dung vào noi_dung_khac.
 Nếu LÀ đơn hàng -> đặt "la_don_hang": true, xử lý như bình thường: text chỉ chứa 1 đơn hàng.

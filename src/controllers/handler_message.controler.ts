@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { ExtractResult, processImageAndExtractInfo, processTextAndExtractInfo } from "../services/gemini.service";
 
-export const newMsg = async (req: Request, res: Response<BaseResponse>) => {
+export const newMsg = async (req: Request, res: Response) => {
     
     let extractedInfo: ExtractResult | null = null;
     try {
@@ -39,7 +39,7 @@ export const newMsg = async (req: Request, res: Response<BaseResponse>) => {
     }
 };
 
-export const reactionMsg = (req: Request, res: Response<BaseResponse>) => {
+export const reactionMsg = (req: Request, res: Response) => {
     // API nhận thả cảm xúc (chưa có chức năng cụ thể)
     const { msg_id, r_icon } = req.body;
     
