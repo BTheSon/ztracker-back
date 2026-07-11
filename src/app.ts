@@ -1,7 +1,7 @@
 import express, { Application } from 'express';
 import cors from 'cors';
-import router from './routes';
 import { errorHandler } from './middlewares/errorHandler';
+import { initRoutes } from './routes';
 
 const app: Application = express();
 
@@ -11,7 +11,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Routes
-app.use('/api', router);
+initRoutes(app);
 
 // Error Handler
 app.use(errorHandler);

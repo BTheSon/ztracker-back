@@ -24,7 +24,7 @@ export const newMsg = async (req: Request, res: Response) => {
 
         const newOrderData: Order = {
             id: msg_id,
-            address: extractedInfo?.don_hang?.dia_chi_day_du || "Không xác định",
+            address: extractedInfo?.don_hang?.dia_chi_day_du || extractedInfo?.don_hang?.dia_chi_goc || "Không xác định",
             phone: extractedInfo?.don_hang?.so_dien_thoai || "0000000000",
             img_url:url,
             createdAt: new Date()

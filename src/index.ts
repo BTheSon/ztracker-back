@@ -11,7 +11,7 @@ initSocket(server);
 const startServer = () => {
     server.listen(config.port, () => {
         console.log(`Server is running on port ${config.port} in ${config.nodeEnv} mode`);
-        console.log(`Health check: http://localhost:${config.port}/api/`);
+        console.log(`http://localhost:${config.port}/api/`);
     });
 };
 

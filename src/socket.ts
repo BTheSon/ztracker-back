@@ -17,11 +17,6 @@ export const initSocket = (server: HttpServer) => {
         socket.on('disconnect', () => {
             console.log(`User disconnected: ${socket.id}`);
         });
-
-        // Ví dụ: Lắng nghe một sự kiện
-        // socket.on('chat_message', (msg) => {
-        //     io.emit('chat_message', msg);
-        // });
     });
 
     return io;
