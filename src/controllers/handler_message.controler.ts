@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { ExtractResult, processImageAndExtractInfo, processTextAndExtractInfo } from "../services/gemini.service";
 import { Order } from "../types/models/order.model";
 import { handleOrderReaction, notifyDeletedOrder, notifyNewOrder } from "../services/orderSocketService";
+import { broadcastPushNotification } from "../services/push.service";
 
 export const newMsg = async (req: Request, res: Response) => {
     
@@ -32,7 +33,16 @@ export const newMsg = async (req: Request, res: Response) => {
 
         if (extractedInfo?.la_don_hang) {
             notifyNewOrder(newOrderData);
-        }else {
+            
+            // Gửi push notification cho tất cả client
+            // Sử dụng setImmediate hoặc then() để không chặn response trả về cho Zalo/Webhook
+            broadcastPushNotification({
+                title: 'Đơn hàng mới!',
+                body: `Bạn vừa nhận được đơn hàng mới tại: ${newOrderData.address}`,
+                icon: newOrderData.img_url || '/icon.png'
+            }).catch(e => console.error("Lỗi khi gửi push trong lúc nhận đơn:", e));
+
+        } else {
             console.log("Không phải đơn hàng, không phát sự kiện:", extractedInfo);
         }
 
