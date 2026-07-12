@@ -9,7 +9,7 @@ const app: Application = express();
 app.use(cors({
     origin: [
         "https://ztracker-back.onrender.com",
-        "http://localhost:5173/",
+        "http://localhost:5173",
     ],
     credentials: true
 }));
