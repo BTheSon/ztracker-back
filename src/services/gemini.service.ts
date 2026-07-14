@@ -6,23 +6,32 @@ import { normalizePhone } from '../utils/mormalize_phone';
 const genAI = new GoogleGenerativeAI(config.geminiApiKey);
 
 // Prompt tối ưu token: ngắn gọn, xử lý 1 ảnh = 1 đơn hàng
-const EXTRACTION_PROMPT_PHOTO = `Trích SĐT, địa chỉ, tên người nhận, nội dung đặt hàng từ ảnh (VN/binhdinh/quynhon). Ảnh chỉ chứa 1 đơn hàng.
-Địa chỉ viết tắt -> suy ra đầy đủ theo khu vực; nếu khớp ≥2 đường, chọn đường lớn/phổ biến hơn. Giữ nguyên số nhà/ký hiệu. Không chắc -> giữ bản gốc, đánh dấu độ tin cậy thấp.
+const EXTRACTION_PROMPT_PHOTO = `Trích SĐT, địa chỉ, nội dung đặt hàng từ ảnh (VN/binhdinh/quynhon). Ảnh chỉ chứa 1 đơn hàng.
+
+Địa chỉ hợp lệ có thể là: số nhà+đường, chỉ tên đường, tên địa danh (chợ, ngã ba, khu vực...), hoặc tên cửa hàng/quán/công ty — KHÔNG bắt buộc phải có số nhà. Nếu địa chỉ gốc chỉ là tên địa danh/quán, giữ nguyên như vậy, không cố suy diễn thêm số nhà không có trong ảnh.
+Địa chỉ viết tắt -> suy ra đầy đủ theo khu vực; giữ nguyên số nhà/ký hiệu nếu có.
+Nếu phải suy đoán giữa ≥2 đường/địa danh khả dĩ trùng tên -> chọn đường/địa danh lớn, phổ biến hơn, nhưng đánh dấu do_tin_cay_dia_chi tối đa "trung_binh" (không được để "cao").
+Nếu ảnh có nhiều hơn 1 SĐT hoặc nhiều hơn 1 địa chỉ (vd: số/địa chỉ shop in sẵn trên hóa đơn lẫn số/địa chỉ viết tay của khách) -> ưu tiên lấy SĐT và địa chỉ gắn với người nhận/giao hàng, không lấy của người gửi/shop.
+SĐT: kiểm tra hợp lệ (đủ 10 số, đầu số 03/05/07/08/09). Nếu không chắc do OCR (số bị mờ, dễ nhầm 0/8, 1/7...) -> giữ số đọc được, ghi chú nghi ngờ vào ghi_chu_don_hang (vd: "SĐT có thể đọc sai, cần xác nhận lại").
+Có tên người nhận trong ảnh -> ghi vào ghi_chu_don_hang.
 Không có SĐT/địa chỉ -> mô tả ảnh vào noi_dung_khac.
 Chỉ trả JSON, đúng schema:
 {"don_hang":{"so_dien_thoai":"","dia_chi_goc":"","dia_chi_day_du":"","ghi_chu_don_hang":"","do_tin_cay_dia_chi":"cao|trung_binh|thap"},"noi_dung_khac":""}`;
 
 // Prompt riêng cho input dạng text (đơn hàng dạng chữ, không phải ảnh)
-// Prompt riêng cho input dạng text (đơn hàng dạng chữ, không phải ảnh)
 const EXTRACTION_PROMPT_TEXT = `Trích SĐT, địa chỉ, tên người nhận, nội dung đặt hàng từ đoạn text (VN/binhdinh/quynhon).
-Trước tiên xác định text có phải nội dung đặt hàng không (có món/số lượng/size, hoặc SĐT/địa chỉ liên quan giao hàng...). 
+Trước tiên xác định text có phải nội dung đặt hàng không (có món/số lượng/size, hoặc SĐT/địa chỉ liên quan giao hàng...).
 Nếu KHÔNG phải đơn hàng (tin nhắn hỏi han, chat linh tinh, quảng cáo, spam...) -> đặt "la_don_hang": false, để trống các trường còn lại trong don_hang, và mô tả ngắn gọn nội dung vào noi_dung_khac.
 Nếu LÀ đơn hàng -> đặt "la_don_hang": true, xử lý như bình thường: text chỉ chứa 1 đơn hàng.
-Địa chỉ viết tắt -> suy ra đầy đủ theo khu vực; nếu khớp ≥2 đường, chọn đường lớn/phổ biến hơn. Giữ nguyên số nhà/ký hiệu. Không chắc -> giữ bản gốc, đánh dấu độ tin cậy thấp.
+
+Địa chỉ hợp lệ có thể là: số nhà+đường, chỉ tên đường, tên địa danh (chợ, ngã ba, khu vực...), hoặc tên cửa hàng/quán/công ty — KHÔNG bắt buộc phải có số nhà. Nếu địa chỉ gốc chỉ là tên địa danh/quán, giữ nguyên như vậy, không cố suy diễn thêm số nhà không có.
+Địa chỉ viết tắt -> suy ra đầy đủ theo khu vực; giữ nguyên số nhà/ký hiệu nếu có.
+Nếu phải suy đoán giữa ≥2 đường/địa danh khả dĩ trùng tên -> chọn đường/địa danh lớn, phổ biến hơn, nhưng đánh dấu do_tin_cay_dia_chi tối đa "trung_binh" (không được để "cao").
+Nếu text có nhiều hơn 1 SĐT hoặc nhiều hơn 1 địa chỉ -> ưu tiên lấy SĐT và địa chỉ gắn với người nhận/giao hàng.
+SĐT: kiểm tra hợp lệ (đủ 10 số, đầu số 03/05/07/08/09). Nếu không chắc -> giữ nguyên, ghi chú nghi ngờ vào ghi_chu_don_hang.
 Không có SĐT/địa chỉ -> mô tả nội dung vào noi_dung_khac.
 Chỉ trả JSON, đúng schema:
 {"la_don_hang":true,"don_hang":{"so_dien_thoai":"","dia_chi_goc":"","dia_chi_day_du":"","ten_nguoi_nhan":"","ghi_chu_don_hang":"","do_tin_cay_dia_chi":"cao|trung_binh|thap"},"noi_dung_khac":""}`;
-
 export interface DonHang {
     so_dien_thoai: string;
     dia_chi_goc: string;

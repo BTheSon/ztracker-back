@@ -18,7 +18,7 @@ export const sendPushNotification = async (subscription: webpush.PushSubscriptio
     }
 };
 
-export const broadcastPushNotification = async (payload: { title: string; body: string; icon?: string; url?: string }) => {
+export const broadcastPushNotification = async (payload: { title: string; body: string; icon?: string; url?: string; data?: any }) => {
     try {
         const result = await db.query('SELECT * FROM push_subscriptions');
         const subscriptions = result.rows;

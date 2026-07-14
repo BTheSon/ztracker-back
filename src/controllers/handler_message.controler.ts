@@ -39,7 +39,11 @@ export const newMsg = async (req: Request, res: Response) => {
             broadcastPushNotification({
                 title: 'Đơn hàng mới!',
                 body: `Bạn vừa nhận được đơn hàng mới tại: ${newOrderData.address}`,
-                icon: newOrderData.img_url || '/icon.png'
+                icon: newOrderData.img_url || '/icon.png',
+                data: {
+                    type: "new_order",
+                    orderData: newOrderData
+                }
             }).catch(e => console.error("Lỗi khi gửi push trong lúc nhận đơn:", e));
 
         } else {
