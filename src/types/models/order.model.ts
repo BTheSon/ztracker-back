@@ -3,5 +3,6 @@ export interface Order {
     address: string;
     phone: string;
     img_url?: string;
+    raw_text?: string;
     createdAt: Date;
 }

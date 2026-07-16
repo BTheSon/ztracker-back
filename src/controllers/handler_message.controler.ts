@@ -28,6 +28,7 @@ export const newMsg = async (req: Request, res: Response) => {
             address: extractedInfo?.don_hang?.dia_chi_day_du || extractedInfo?.don_hang?.dia_chi_goc || "Không xác định",
             phone: extractedInfo?.don_hang?.so_dien_thoai || "0000000000",
             img_url:url,
+            raw_text: text,
             createdAt: new Date()
         }
 
