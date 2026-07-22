@@ -1,42 +1,49 @@
 import { Request, Response } from "express";
 import { ExtractResult, processImageAndExtractInfo, processTextAndExtractInfo } from "../services/gemini.service";
 import { Order } from "../types/models/order.model";
-import { handleOrderReaction, notifyDeletedOrder, notifyNewOrder } from "../services/orderSocketService";
+import { handleOrderReaction, notifyDeletedOrder, notifyNewOrder, notifyMessToAllClients } from "../services/orderSocketService";
 import { broadcastPushNotification } from "../services/push.service";
 
 export const newMsg = async (req: Request, res: Response) => {
     
     let extractedInfo: ExtractResult | null = null;
-    try {
-        const { 
-            msg_id = "",
-            type = "unknown", 
-            text = "[Không xác định]", 
-            url = null, 
-            title = null 
-        } = req.body;
+    let geminiError: string | null = null;
 
-        // Xử lý nếu type là photo, tách riêng logic nghiệp vụ vào service
+    const { 
+        msg_id = "",
+        type = "unknown", 
+        text = "[Không xác định]", 
+        url = null, 
+        title = null 
+    } = req.body;
+
+    // Gọi Gemini — tách riêng try/catch để lỗi không làm mất toàn bộ đơn
+    try {
         if (type === "photo" && url) {
             extractedInfo = await processImageAndExtractInfo(url);
         } else if (type === "text" && text) {
             extractedInfo = await processTextAndExtractInfo(text);
         }
+    } catch (error: any) {
+        // Gemini lỗi (quota, network, timeout,...) — ghi log, tiếp tục xử lý
+        geminiError = error?.message || "Lỗi không xác định từ Gemini";
+        console.warn("[Gemini] Không thể trích xuất thông tin, tiếp tục gửi order trống:", geminiError);
+        notifyMessToAllClients(`[Gemini Error] ${geminiError}`);
+    }
 
+    try {
         const newOrderData: Order = {
             id: msg_id,
             address: extractedInfo?.don_hang?.dia_chi_day_du || extractedInfo?.don_hang?.dia_chi_goc || "Không xác định",
             phone: extractedInfo?.don_hang?.so_dien_thoai || "0000000000",
-            img_url:url,
-            raw_text: text,
+            img_url: url,
+            raw_text: type === "text" ? text : undefined,
             createdAt: new Date()
-        }
+        };
 
         if (extractedInfo?.la_don_hang) {
             notifyNewOrder(newOrderData);
-            
-            // Gửi push notification cho tất cả client
-            // Sử dụng setImmediate hoặc then() để không chặn response trả về cho Zalo/Webhook
+
             broadcastPushNotification({
                 title: 'Đơn hàng mới!',
                 body: `Bạn vừa nhận được đơn hàng mới tại: ${newOrderData.address}`,
@@ -48,18 +55,19 @@ export const newMsg = async (req: Request, res: Response) => {
             }).catch(e => console.error("Lỗi khi gửi push trong lúc nhận đơn:", e));
 
         } else {
-            console.log("Không phải đơn hàng, không phát sự kiện:", extractedInfo);
+            console.log("Không phải đơn hàng hoặc Gemini lỗi, không phát sự kiện:", extractedInfo);
         }
 
         res.json({
-            msg: "Xử lý tin nhắn thành công", // Bổ sung dòng này
+            msg: geminiError
+                ? `Xử lý tin nhắn thành công (Gemini lỗi: ${geminiError})`
+                : "Xử lý tin nhắn thành công",
             data: newOrderData
         });
     } catch (error: any) {
-        // Lưu ý: res.status(500).json(...) ở đây cũng phải khớp với BaseResponse
         res.status(500).json({
             msg: error.message || "Lỗi xử lý tin nhắn",
-            data: extractedInfo
+            data: null
         });
     }
 };
