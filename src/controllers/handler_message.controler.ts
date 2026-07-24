@@ -41,12 +41,15 @@ export const newMsg = async (req: Request, res: Response) => {
             createdAt: new Date()
         };
 
-        if (extractedInfo?.la_don_hang) {
+        // Nếu là đơn hàng hợp lệ HOẶC nếu Gemini bị lỗi (vẫn gửi để Client tự xem ảnh/text)
+        if (extractedInfo?.la_don_hang || geminiError) {
             notifyNewOrder(newOrderData);
 
             broadcastPushNotification({
-                title: 'Đơn hàng mới!',
-                body: `Bạn vừa nhận được đơn hàng mới tại: ${newOrderData.address}`,
+                title: geminiError ? 'Đơn hàng mới (Chưa phân tích được)' : 'Đơn hàng mới!',
+                body: geminiError 
+                    ? 'Có tin nhắn/ảnh mới nhưng AI đang lỗi, vui lòng kiểm tra thủ công.'
+                    : `Bạn vừa nhận được đơn hàng mới tại: ${newOrderData.address}`,
                 icon: newOrderData.img_url || '/icon.png',
                 data: {
                     type: "new_order",
@@ -55,7 +58,7 @@ export const newMsg = async (req: Request, res: Response) => {
             }).catch(e => console.error("Lỗi khi gửi push trong lúc nhận đơn:", e));
 
         } else {
-            console.log("Không phải đơn hàng hoặc Gemini lỗi, không phát sự kiện:", extractedInfo);
+            console.log("Không phải đơn hàng, không phát sự kiện:", extractedInfo);
         }
 
         res.json({
